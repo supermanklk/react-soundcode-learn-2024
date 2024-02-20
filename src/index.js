@@ -1,17 +1,22 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
+// import React from 'react'
+// import ReactDOM from 'react-dom'
+
+import * as MyReact from './MyReact/index.js';
+
 import './index.css';
 import App from './App';
-import reportWebVitals from './reportWebVitals';
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
+// const element = React.createElement('div', { title: 'hello', id: 'sky' }, 'faith', React.createElement('a', { src: '111' }, '我是a标签'))
+
+const element = MyReact.createElement(
+  'div',
+  { title: 'hello', id: 'sky', binbin: '3' },
+  'faith',
 );
 
-// If you want to start measuring performance in your app, pass a function
-// to log results (for example: reportWebVitals(console.log))
-// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
-reportWebVitals();
+console.log('faith=============element', element);
+
+// const root = ReactDOM.createRoot(document.getElementById('root'))
+// root.render(element)
+
+MyReact.render(element, document.getElementById('root'));
