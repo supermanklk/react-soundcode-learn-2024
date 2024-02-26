@@ -12,6 +12,7 @@ const element = MyReact.createElement(
   'div',
   { title: 'hello', id: 'sky', binbin: '3' },
   'faith',
+  MyReact.createElement('a', { src: '111' }, '我是a标签'),
 );
 
 console.log('faith=============element', element);
