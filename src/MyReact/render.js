@@ -1,30 +1,118 @@
 let nextUnitOfWork = null;
 
+// 10-0 Reconciliation 协调阶段，这个阶段就是我们大名鼎鼎 diff 算法的阶段
+// 既然是 diff 算法，那么它的核心思想就是比较,然后找到其中的不同，求同存异
+// 那么我们要比较什么呢？
+// 虚拟DOM  -> fiber树 -> 真实DOM 所以我们生成fiber数是根据我们fiber数来的
+// 所以更新我们所比较的是 fiber 树
+
 // @9-5
 let workInProgressRoot = null;
 
+// 10-1  上一次的 fiber 数, 我们在什么阶段可以得到 currentRoot？ 那就是 commitRoot 提交阶段
+let currentRoot = null;
+
+// 10-6
+let deletions = [];
+
 // @8
-function createDOM(element) {
+// function createDOM(element) {
+//   const dom =
+//     element.type === 'TEXT_ELEMENT'
+//       ? document.createTextNode('')
+//       : document.createElement(element.type);
+
+//   const isProperty = (key) => {
+//     return key !== 'children';
+//   };
+
+//   Object.keys(element.props)
+//     .filter(isProperty)
+//     .forEach((item) => {
+//       if (dom[item] !== undefined) {
+//         dom[item] = element.props[item];
+//       } else {
+//         dom.setAttribute(item, element.props[item]);
+//       }
+//     });
+
+//   return dom;
+// }
+
+// 10-12 给之前的 createDOM 注释了
+function createDOM(fiber) {
   const dom =
-    element.type === 'TEXT_ELEMENT'
+    fiber.type === 'TEXT_ELEMENT'
       ? document.createTextNode('')
-      : document.createElement(element.type);
+      : document.createElement(fiber.type);
 
-  const isProperty = (key) => {
-    return key !== 'children';
-  };
-
-  Object.keys(element.props)
-    .filter(isProperty)
-    .forEach((item) => {
-      if (dom[item] !== undefined) {
-        dom[item] = element.props[item];
-      } else {
-        dom.setAttribute(item, element.props[item]);
-      }
-    });
+  updateDom(dom, {}, fiber.props);
 
   return dom;
+}
+
+// 10-5
+function reconcilerChildren(wipFiber, elements) {
+  let prevSibling = null;
+  let index = 0;
+  let oldFiber =
+    wipFiber.alternate && wipFiber.alternate.child;
+  while (index < elements.length || !!oldFiber) {
+    const childrenElement = elements[index];
+    // newFiber 我们就不要了, 接下来我们看看 reconcilerChildren 需要接收那些参数, 其实我们要做的事情就是 老的 fiber  和 新的giber 做一个对比
+    //
+    // const newFiber = {
+    //   type: element.type,
+    //   props: element.props,
+    //   parent: fiber,
+    //   dom: null,
+    // };
+
+    let newFiber = null;
+    const sameType =
+      oldFiber &&
+      childrenElement &&
+      childrenElement.type === oldFiber.type;
+    if (sameType) {
+      newFiber = {
+        type: oldFiber.type,
+        props: childrenElement.props,
+        dom: oldFiber.dom,
+        parent: wipFiber,
+        alternate: oldFiber,
+        effectTag: 'UPDATE',
+      };
+    }
+
+    if (!sameType && childrenElement) {
+      newFiber = {
+        type: childrenElement.type,
+        props: childrenElement.props,
+        dom: null,
+        parent: wipFiber,
+        alternate: null,
+        effectTag: 'PLACEMENT',
+      };
+    }
+
+    if (!sameType && oldFiber) {
+      oldFiber.effectTag = 'DETETION';
+      deletions.push(oldFiber);
+    }
+
+    // 10-9 这样的话才是同级之前的比较
+    if (oldFiber) {
+      oldFiber = oldFiber.sibling;
+    }
+
+    if (index === 0) {
+      wipFiber.child = newFiber;
+    } else {
+      prevSibling.sibling = newFiber;
+    }
+    prevSibling = newFiber;
+    index++;
+  }
 }
 
 // perfor = 执行
@@ -47,24 +135,28 @@ function performUnitOfWork(fiber) {
 
   // 获取当前 fiber 的子节点
   const elements = fiber.props.children;
+  reconcilerChildren(fiber, elements);
   let index = 0;
-  let prevSibling = null;
-  while (index < elements.length) {
-    const element = elements[index];
-    const newFiber = {
-      type: element.type,
-      props: element.props,
-      parent: fiber,
-      dom: null,
-    };
-    if (index === 0) {
-      fiber.child = newFiber;
-    } else {
-      prevSibling.sibling = newFiber;
-    }
-    prevSibling = newFiber;
-    index++;
-  }
+
+  // 10-4 注释
+  // let prevSibling = null;
+  // while (index < elements.length) {
+  //   const element = elements[index];
+  //   const newFiber = {
+  //     type: element.type,
+  //     props: element.props,
+  //     parent: fiber,
+  //     dom: null,
+  //   };
+  //   if (index === 0) {
+  //     fiber.child = newFiber;
+  //   } else {
+  //     prevSibling.sibling = newFiber;
+  //   }
+  //   prevSibling = newFiber;
+  //   index++;
+  // }
+
   if (fiber.child) {
     return fiber.child;
   }
@@ -109,10 +201,81 @@ function performUnitOfWork(fiber) {
 // 从root开始，找到div，找到h1、找到p，发现p没有子节点，找p的兄弟节点a，a没有兄弟和子节点，就会找父节点的兄弟节点h2
 // h2没有兄弟和子节点，就去找div，div没有兄弟节点，就找到root，完成,代表fiber树就渲染完成了
 
+// 筛选出事件
+const isEvent = (key) => key.startsWith('on');
+// 筛选出 children 属性
+const isProperty = (key) => key !== 'children';
+// 筛选出要移除的属性
+const isGone = (prev, next) => (key) => !(key in next);
+// 挑选出新的属性
+const isNew = (prev, next) => (key) =>
+  prev[key] !== next[key];
+
+function updateDom(dom, prevProps, nextProps) {
+  // 移除掉旧的监听事件
+  Object.keys(prevProps)
+    .filter(isEvent)
+    .filter(
+      (key) =>
+        isGone(prevProps, nextProps)(key) ||
+        isNew(prevProps, nextProps)(key),
+    )
+    .forEach((name) => {
+      const eventType = name
+        .toLocaleLowerCase()
+        .substring(2);
+      dom.removeEventListener(eventType, prevProps[name]);
+    });
+
+  // 移除掉不存在新props里的属性
+  Object.keys(prevProps)
+    .filter(isProperty)
+    .filter(isGone(prevProps, nextProps))
+    .forEach((name) => (dom[name] = ''));
+
+  // 新增
+  Object.keys(nextProps)
+    .filter(isProperty)
+    .filter(isNew(prevProps, nextProps))
+    .forEach((name) => (dom[name] = nextProps[name]));
+
+  // 新增事件
+
+  Object.keys(nextProps)
+    .filter(isEvent)
+    .filter(isNew(prevProps, nextProps))
+    .forEach((name) => {
+      const eventType = name
+        .toLocaleLowerCase()
+        .substring(2);
+      dom.addEventListener(eventType, nextProps[name]);
+    });
+}
+
 function commitWork(fiber) {
   if (!fiber) return;
   const domParent = fiber.parent.dom;
-  domParent.appendChild(fiber.dom);
+  // 10-10 注释
+  // domParent.appendChild(fiber.dom);
+  switch (fiber.effectTag) {
+    case 'PLACEMENT':
+      // 当dom节点存在
+      !!fiber.dom && domParent.appendChild(fiber.dom);
+      break;
+    case 'UPDATE':
+      // 10-11
+      !!fiber.dom &&
+        updateDom(fiber.dom, fiber.alternate, fiber.props);
+      break;
+    case 'DELETION':
+      !!fiber.dom && domParent.removeChild(fiber.dom);
+
+      break;
+
+    default:
+      break;
+  }
+
   commitWork(fiber.child);
   commitWork(fiber.sibling);
 }
@@ -121,6 +284,12 @@ function commitWork(fiber) {
 function commitRoot() {
   // 做渲染，真实DOM的操作
   commitWork(workInProgressRoot.child);
+  // 10-8
+  deletions.forEach(commitWork);
+
+  // 10-2
+  currentRoot = workInProgressRoot;
+
   workInProgressRoot = null;
 }
 
@@ -165,15 +334,22 @@ requestIdleCallback(workloop);
 
 // @7
 export default function render(element, container) {
+  console.log('faith=============element', element);
   // 此刻我们 render 就不负责创建真实 DOM 了
   workInProgressRoot = {
     dom: container,
     props: {
       children: [element],
     },
+    // 10-3 最终 workInProgressRoot 会作为一个任务单元传入到 performUnitOfWork 中，那么在 performUnitOfWork中就可以通过 alternate 属性
+    // 得到我们上一次提交的 fiber 树
+    alternate: currentRoot,
   };
 
   nextUnitOfWork = workInProgressRoot;
+
+  // 10-7
+  deletions = [];
 }
 
 // @6 注释下面
