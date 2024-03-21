@@ -15,6 +15,9 @@ let currentRoot = null;
 // 10-6
 let deletions = [];
 
+let workInProgressFiber = [];
+let hooksIndex = 0;
+
 // @8
 // function createDOM(element) {
 //   const dom =
@@ -96,7 +99,7 @@ function reconcilerChildren(wipFiber, elements) {
     }
 
     if (!sameType && oldFiber) {
-      oldFiber.effectTag = 'DETETION';
+      oldFiber.effectTag = 'DELETION';
       deletions.push(oldFiber);
     }
 
@@ -115,13 +118,47 @@ function reconcilerChildren(wipFiber, elements) {
   }
 }
 
-// perfor = 执行
-// @3
-function performUnitOfWork(fiber) {
-  // 执行任务单元 = 一个虚拟dom转换为一个真实DOM
-  // 为当前的 fiber 创建它子节点的 fiber
-  // 返回下一个任务单元
+export function useState(initial) {
+  const oldHook =
+    workInProgressFiber?.alternate?.hooks?.[hooksIndex];
+  const hook = {
+    state: oldHook ? oldHook.state : initial,
+    queue: [],
+  };
 
+  const actions = oldHook ? oldHook.queue : [];
+  actions.forEach((action) => {
+    hook.state = action;
+  });
+
+  const setState = (action) => {
+    hook.queue.push(action);
+
+    workInProgressRoot = {
+      dom: currentRoot.dom,
+      props: currentRoot.props,
+      alternate: currentRoot,
+    };
+    nextUnitOfWork = workInProgressRoot;
+    deletions = [];
+  };
+
+  workInProgressFiber.hooks.push(hook);
+
+  hooksIndex++;
+
+  return [hook.state, setState];
+}
+
+function updateFunctionComponent(fiber) {
+  workInProgressFiber = fiber;
+  workInProgressFiber.hooks = [];
+  hooksIndex = 0;
+  const children = [fiber.type(fiber.props)];
+  reconcilerChildren(fiber, children);
+}
+
+function updateHostComponent(fiber) {
   if (!fiber.dom) {
     fiber.dom = createDOM(fiber);
   }
@@ -136,7 +173,37 @@ function performUnitOfWork(fiber) {
   // 获取当前 fiber 的子节点
   const elements = fiber.props.children;
   reconcilerChildren(fiber, elements);
-  let index = 0;
+}
+
+// perfor = 执行
+// @3
+function performUnitOfWork(fiber) {
+  // 执行任务单元 = 一个虚拟dom转换为一个真实DOM
+  // 为当前的 fiber 创建它子节点的 fiber
+  // 返回下一个任务单元
+
+  const isFunctionComponent =
+    fiber.type instanceof Function;
+  if (isFunctionComponent) {
+    updateFunctionComponent(fiber);
+  } else {
+    updateHostComponent(fiber);
+  }
+
+  // if (!fiber.dom) {
+  //   fiber.dom = createDOM(fiber);
+  // }
+  // if (fiber.parent) {
+  //   // 当时我有疑问 创建了当前fiber节点的dom，为什么要假如到父节点的DOM中？
+  //   // 其实我们这里看到的是 appendChild，拿到父dom， dom.appendChild 就是添加子dom
+  //   //  appendChild
+  //   // @9-3 因为我们这个操作不就不在这里做了,因为我们现在要一次性提交,那我们肯定要满足某个条件的时候再一次性提交
+  //   // fiber.parent.dom.appendChild(fiber.dom);
+  // }
+
+  // // 获取当前 fiber 的子节点
+  // const elements = fiber.props.children;
+  // reconcilerChildren(fiber, elements);
 
   // 10-4 注释
   // let prevSibling = null;
@@ -252,9 +319,25 @@ function updateDom(dom, prevProps, nextProps) {
     });
 }
 
+function commitDeletion(fiber, domParent) {
+  if (fiber.dom) {
+    domParent.removeChild(fiber.dom);
+  } else {
+    commitDeletion(fiber.child, domParent);
+  }
+}
+
 function commitWork(fiber) {
   if (!fiber) return;
-  const domParent = fiber.parent.dom;
+
+  // 注释的原因是我们要跳过我们的函数组件
+  // const domParent = fiber.parent.dom;
+  let domParentFiber = fiber.parent;
+  while (!domParentFiber.dom) {
+    domParentFiber = domParentFiber.parent;
+  }
+  const domParent = domParentFiber.dom;
+
   // 10-10 注释
   // domParent.appendChild(fiber.dom);
   switch (fiber.effectTag) {
@@ -268,7 +351,8 @@ function commitWork(fiber) {
         updateDom(fiber.dom, fiber.alternate, fiber.props);
       break;
     case 'DELETION':
-      !!fiber.dom && domParent.removeChild(fiber.dom);
+      // !!fiber.dom && domParent.removeChild(fiber.dom);
+      commitDeletion(fiber, domParent);
 
       break;
 
@@ -333,7 +417,7 @@ function workloop(deadline) {
 requestIdleCallback(workloop);
 
 // @7
-export default function render(element, container) {
+export function render(element, container) {
   console.log('faith=============element', element);
   // 此刻我们 render 就不负责创建真实 DOM 了
   workInProgressRoot = {
@@ -382,3 +466,6 @@ export default function render(element, container) {
 
 //   container.appendChild(dom);
 // }
+
+// 实现函数组件
+// 首先它是一个Function

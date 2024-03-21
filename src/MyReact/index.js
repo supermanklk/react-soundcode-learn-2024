@@ -1,4 +1,4 @@
-import render from "./render";
-import createElement from "./createElement";
+import createElement from './createElement';
+import { render, useState } from './render.js';
 
-export { render, createElement };
+export { render, createElement, useState };
