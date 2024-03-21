@@ -61,3 +61,6 @@ function App() {
 }
 
 MyReact.render(<App />, container);
+
+// 总结，整个玩具React架构
+// http://faith-2021-001.oss-cn-hangzhou.aliyuncs.com/20240321/1710985815868471.png
